@@ -9,7 +9,6 @@ Faz a Comunicação com Servidor Central e o Interfaceamento com usuário final
 '''
 
 class Interface:
-    
     # Construtor da Classe
     # // Entrada: Um host,porta,nConexoes para aceitar peers e HOSTSC,PORTASC do Servidor Central (para requisições)
     def __init__(self, host, porta, nConexoes, HOSTSC, PORTASC):
