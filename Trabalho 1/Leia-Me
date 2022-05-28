@@ -25,3 +25,6 @@ Para testar o código:
 	4. Executar o ServidorCentral e depois as Interfaces no Python3
 		python3 ServidorCentral.py	
 		python3 Interface.py
+
+Deem uma olhada ai, opinem. Acho que o core ta ai. Mas precisa completar e melhorar até a entrega. 
+Tem que corrigir os erros também.

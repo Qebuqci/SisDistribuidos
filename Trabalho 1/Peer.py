@@ -8,7 +8,6 @@ Classe auxiliar a Interface que lida com a comunicação entre os pares (peers)
 '''
 
 class PeerToPeer:
-    
     # Construtor da Classe #
     # // Entrada: Um host,porta,nConexoes para aguardar conexões de outros peers (modo escuta ou passivo)
     def __init__(self, host, porta, nConexoes):
