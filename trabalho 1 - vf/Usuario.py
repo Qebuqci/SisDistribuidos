@@ -485,7 +485,8 @@ class Usuario:
         if findPeer:
             username = findPeer["username"]
             corUsuario = findPeer["cor"]
-            print(self.cor.tazul() + self.cor.tsublinhado() + "Encerrando conexão com peer: " + self.cor.end() + corUsuario() + '@' + username + self.cor.end())
+            print(self.cor.tazul() + self.cor.tsublinhado() + "Encerrando conexão com peer: " + 
+                  self.cor.end() + corUsuario() + '@' + username + self.cor.end())
             socketPeer = findPeer["socket"].close()   # fecha o socket
             # Condição de corrida
             Usuario.lock.acquire()
