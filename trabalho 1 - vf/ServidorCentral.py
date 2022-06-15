@@ -51,8 +51,19 @@ class ServidorCentral:
             1. info: Informações sobre o servidor \n \
             2. get_lista: Lista usuários online \n \
             3. comandos: Exibir comandos \n \
-            4. exit: Encerra o servidor. (!) Se houver usuários online, são todos deslogados")
-        
+            4. kill <user>: Desloga um usuario online no servidor \n \
+            5. exit: Encerra o servidor. (!) Se houver usuários online, são todos deslogados")
+    
+    # Método usado para deslogar usuario no Servidor e evitar fantasmas #
+    def killUser(self, comando):
+        usuario = comando[5:]
+        if len(usuario) == 0:   usuario = input("Digite o nome do usuario: ")
+        infoUsuario = ServidorCentral.usuariosOnline.get(usuario)
+        if infoUsuario:
+            self.deslogarUsuario(usuario, (infoUsuario["Endereco"],infoUsuario["Porta"]))
+        else:
+            print("Usuário " + '@'+usuario + " não online")
+                
     # Método Shutdown do Servidor, para encerrar as threads e o socket de aceita conexões em PORTSC #
     def quit(self):
         for thread_usuario in ServidorCentral.threads_usuarios: # aguarda todas as threads terminarem
@@ -85,6 +96,10 @@ class ServidorCentral:
                             print(usuario)
                     elif comandoEntrada == "comandos":
                         self.exibirComandos()
+                    elif comandoEntrada == '':
+                        pass
+                    elif comandoEntrada.split()[0] == "kill":
+                        self.killUser(comandoEntrada)                        
                     elif comandoEntrada == "exit":
                         self.quit()
                         sys.exit()
@@ -98,14 +113,16 @@ class ServidorCentral:
                 usuario = ServidorCentral.usuariosAtivos.get(endereco[0])   # verifique se o usuario está ativa
                 if usuario: self.deslogarUsuario(usuario, endereco)         # caso esteja, deslogue
                 clisock.close()                                             # feche o socket
+                # faltou tirar a thread da lista de threads, mas vou deixar assim
                 return                                                      # feche a thread
             
             # Caso contrário, isto é, o servidor receba
             tamMsgInt = int.from_bytes(tamMsgBytes, "big")   # Converte para inteiro BigEndian
-            dados = self.ChunksRecebidosToMsg(tamMsgInt, clisock)
+            # esse método da errado pra alguns usuarios dependendo de como eles enviam bytes
+            #dados = self.ChunksRecebidosToMsg(tamMsgInt, clisock) 
             
-            #bytesRecebidos = clisock.recv(tamMsgInt + 1024) # Recebe o tamanho da Mensagem + 1KB de auxílio           
-            #dados = bytesRecebidos.decode("utf-8")              
+            bytesRecebidos = clisock.recv(tamMsgInt + 1024) # Recebe o tamanho da Mensagem + 1KB de auxílio           
+            dados = bytesRecebidos.decode("utf-8")              
 
             try:                                             # Tenta
                 dadosJSON = json.loads(dados)                # carregar a mensagem num dicionário (HashMap)
@@ -230,7 +247,7 @@ class ServidorCentral:
 # Função principal do Servidor #
 def main():
     HOSTSC = ''         # Setar HOST ServidorCentral
-    PORTASC = 9001      # Setar PORTA ServidorCentral
+    PORTASC = 9000      # Setar PORTA ServidorCentral
     nConexoes = 3
     servidor = ServidorCentral(HOSTSC, PORTASC, nConexoes)
     servidor.start()

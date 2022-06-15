@@ -69,8 +69,8 @@ class Usuario:
         chunksRecebidos = socket.recv(TamMsg)               # Recebe o buffer do tamanho da mensagem
         msg = chunksRecebidos.decode("utf-8")               # Decodifica os bytes dessa informação em String 
         while len(msg) < TamMsg:                            # Verifica se o tamanho da String é menor que o tamanho da mensagem
-            chunksRecebidos = socket.recv(minBuffer)        # Caso seja, recebe a mensagem em partes de 10 bytes cada
-            print("Recebidos : " + str(len(msg)))
+            chunksRecebidos = socket.recv(minBuffer)        # Caso seja, recebe a mensagem em chunks (partes) de 10 bytes cada
+            #print("Recebidos : " + str(len(msg)))
             msg += chunksRecebidos.decode("utf-8")          # Vai decodificando e inserindo na string msg recebida
                    
         return msg                                          # retorna a mensagem 
@@ -124,13 +124,21 @@ class Usuario:
     # Método único que recebe e imprime a resposta (p/ usuário final) de cada requisição acima # 
     def receberResposta(self):
         tamRespostaBytes = self.sockServidor.recv(2)        # Recebe os 2 primeiros bytes
-        if not tamRespostaBytes:                            # Se não receber, Servidor encerrou
-            self.quit()                                     # encerre a aplicação corretamente com um comando da funcionalidade de Interface
-        
+
+        #if not tamRespostaBytes:                            # Se não receber, Servidor encerrou
+        #    self.quit()                                     # encerre a aplicação corretamente com um comando da funcionalidade de Interface
+        # ele so chama receberResposta depois que faz uma requisição, então necessariamente ele  aguarda por dados
+        # isso aqui não tem jeito, de controlar. Se o servidor de alguém não enviar dados, então a aplicação simplesmente trava.
+        # A maneira de contornar isso seria designar uma thread ou usar um select para aguardar I/O inteligentemente
+        # mas da maneira como foi feito, a comunicação com servidor central por parte do usuário ocorre iterativamente. Dsse jeito, não tem jeito
+       
         # Caso receba
         tamRespInt = int.from_bytes(tamRespostaBytes, "big")        # Dos (from) 2 primeiros bytes em BigEndian converta para inteiro        
 
-        dados = self.ChunksRecebidosToMsg(tamRespInt, self.sockServidor)
+        #dados = self.ChunksRecebidosToMsg(tamRespInt, self.sockServidor)
+        
+        bytesRecebidos = self.sockServidor.recv(tamRespInt + 1024)   # Recebe o tamanho da Mensagem + 1KB de auxílio           
+        dados = bytesRecebidos.decode("utf-8")              
         
         try:
             dadosJSON = json.loads(dados)
@@ -215,7 +223,7 @@ class Usuario:
                         self.conectados()
                     elif comando.split()[0] == "@info":
                         if self.info(comando) < 0: continue
-                    elif comando[0] == "@":
+                    elif comando[0] == "@" and comando.find(":") > 0:
                         if self.conectar_p2p(comando) < 0: continue
                     else:
                         print(self.cor.tnegrito() + self.cor.tvermelho() + "COMANDO DE ENTRADA INVÁLIDO !" + self.cor.end())
@@ -235,24 +243,25 @@ class Usuario:
             "\t(!) Se não for passado <Username> imprime do próprio <Nickname>.\n\n" + 
             self.cor.tsublinhado() + "Para enviar mensagem: \n" + self.cor.end() +  self.cor.tazul() + 
             "\t@get_lista" + self.cor.end() + ": Para atualizar a lista e ter os peers online" + self.cor.tazul() +
-            "\n\t@peer: MSG" + self.cor.end() + ", onde peer é o usuário destinatário da mensagem")
+            "\n\t@peer : MSG" + self.cor.end() + ", onde peer é o usuário destinatário da mensagem e os dois pontos separa o peername da MSG")
         
     # Permite o usuário setar seu (novo) username (nickname) #
     # // Entrada: Comando digitado na interface
     def definirUsername(self, comando):
-        if Usuario.Logado:  # Se o usuario está online, faça logoff antes de setar outro nickname
+        if Usuario.Logado:                                   # Se o usuario está online, faça logoff antes de setar outro nickname
             print("Logoff sob o antigo username sendo efetuado primeiro...")
             self.requisitarLogoff()
             if Usuario.peersConectados: self.quitAll_p2p()   # Se houver peersConectados assim que faz logoff, então fecha tudo, sem encerrar o programa
             if Usuario.Logado:                               # Se o usuario continua logado então deu erro logoff
                 print(self.cor.tvermelho() + self.cor.tnegrito() + "Erro no Logoff enquanto tentava-se trocar de nickname" + self.cor.end())
-                return # retorna pro menu
-        try:
-            usernameCMD = comando.split()[1]    # username passado na linha de comando
-            self.username = usernameCMD
-        except IndexError: # Se der exceção, então usuario não passou user na linha de comando, dê input
-            self.username = input("Entre com um username no chat: ")
+                return                                       # retorna pro menu
         
+        if comando == '':                                    # Se comando for vazio, então nenhum username foi passado na linha de comando
+            self.username = input("Entre com um username no chat: ") # dê input
+            return                                                   # volte ao menu
+   
+        self.username = comando[6:]    # username passado na linha de comando, onde o 6 indica o começo do username digitado pós @nick
+             
         print(self.cor.tazul() + self.cor.tnegrito() + self.cor.tsublinhado() + "Username definido!" + self.cor.end())
         print("Bem vindo, @" + self.cor.tazul() + self.cor.tnegrito() + self.cor.tsublinhado() + self.username + self.cor.end())
         print("Faça " + self.cor.tazul()  +  "@login" + self.cor.end() + " para se registrar no Servidor Central")
@@ -295,19 +304,30 @@ class Usuario:
             print(self.cor.tazul() + "Username: " + self.cor.end() + self.cor.tvermelho() + '@' + self.cor.end() + 
                   corPeer() + username + self.cor.end() + '\n' + 
                   self.cor.tazul() + "Endereço: " +  self.cor.end() + corPeer() + peer + self.cor.end() + '\n' + 
-                  self.cor.tazul() + "Porta: " +  self.cor.end() + corPeer() + porta + self.cor.end() )
+                  self.cor.tazul() + "Porta: " +  self.cor.end() + corPeer() + str(porta) + self.cor.end() )
 
     # Encerra a aplicação #
     def quit(self):
         print(self.cor.tazul() + self.cor.tnegrito() + self.cor.tsublinhado() + "Programa sendo encerrado..." + self.cor.end())
-        if Usuario.peersConectados: self.quitAll_p2p()  # Encerra todas as conexões P2P, caso existam
+        
+        # Encerra todas as conexões P2P, caso existam
+        if Usuario.peersConectados: self.quitAll_p2p()  
         
         # Encerra todas as threads
         for peerThread in Usuario.threads_p2p:   
             peerThread.join()            # aguarda elas terminarem
             print("Thread " + str(peerThread) + " Encerrada")
         
-        self.sockServidor.close()        # Fecha conexão com servidor central
+        # zerar a lista de threads, mas o garbage collector do python resolve isso ja que o app ta fechando
+        
+        # Requisita um logoff no Servidor Central antes de fechar todas as conexões P2P
+        if Usuario.Logado == True:  
+            self.requisitarLogoff()
+            if Usuario.Logado:  # Se o usuário contina logado, deu erro no logoff, mas como a aplicação está encerrado
+                pass            # pass tal erro = não faça nada
+        
+        # Encerra conexão com servidor central
+        self.sockServidor.close()        
         
         return
 
@@ -335,20 +355,28 @@ class Usuario:
     # // Entrada: peerSock cuja thread executará o receive e o endereco desse peer
     def receberMensagem_p2p(self, peerSock, endereco):
         while True:
-            tamMsgBytes = peerSock.recv(2)                      # Recebe os 2 primeiros bytes
-            if not tamMsgBytes:                                 # Se não receber, peer encerrou
-                self.encerrarConexao_p2p(endereco, peerSock)    # encerra conexão p2p
-                return                                          # quebra a função executada pela thread
+            # Recepção dos 2 primeiros bytes
+            tamMsgBytes = peerSock.recv(2)                           
+            if not tamMsgBytes:                                      # Se não receber, peer encerrou
+                self.encerrarConexao_p2p(endereco, peerSock)         # encerra conexão p2p
+                # faltou tirar a thread da lista de threads
+                return                                               # quebra a função executada pela thread
             
             # Caso receba
             tamMsgInt = int.from_bytes(tamMsgBytes, "big")           # Converte o tamMsg para inteiro BigEndian
-            dados = self.ChunksRecebidosToMsg(tamMsgInt, peerSock)   # recebe chunk by chunk all data 
-            dadosDict = json.loads(dados)                            # JSON to Dict (Hashmap)
-            try:                
+            #dados = self.ChunksRecebidosToMsg(tamMsgInt, peerSock)   # recebe chunk by chunk all data 
+            
+            # Recebimento da mensagem
+            dadosBytes = peerSock.recv(tamMsgInt + 1024)
+            dados = dadosBytes.decode("utf-8")
+            
+            # Tente:
+            try:             
+                dadosDict = json.loads(dados)                        # JSON to Dict (Hashmap)   
                 username = dadosDict["username"]
                 mensagem = dadosDict["mensagem"]
-                enderecoPeer = endereco[0]
-                porta = endereco[1]
+                enderecoPeer = endereco[0]                           # IP
+                porta = endereco[1]                                  # porta
                         
                 findPeer = Usuario.peersConectados.get(enderecoPeer) # tenta encontrar uma conexão entre o peer que enviou uma msg e o usuario 
                 if not findPeer:                                     # se não existe, registra essa conexão em peersConectados
@@ -359,42 +387,48 @@ class Usuario:
                     Usuario.peersConectados[enderecoPeer] = {"username": username, "socket": peerSock, "porta": porta, "cor": corUser }
                     Usuario.lock.release()
                     # Fim da Condição de corrida
-                findPeer = Usuario.peersConectados.get(enderecoPeer) # tenta encontrar uma conexão entre o peer que enviou uma msg e o usuario 
+                    
+                findPeer = Usuario.peersConectados.get(enderecoPeer) # faz dnv: tenta encontrar uma conexão entre o peer que enviou uma msg e o usuario 
                 corUsuario = findPeer["cor"]
                 print(self.cor.tvermelho() + self.cor.tnegrito() + "@" + self.cor.end() + corUsuario() + username + self.cor.end() + ": " + mensagem)
+            
             except: # Encerrar a conexão do peer
                 print(self.cor.tvermelho() + self.cor.tnegrito() + "Erro nos dados recebidos do peer" + self.cor.end())
                 print(self.cor.tazul() + self.cor.tsublinhado() + "Dados recebidos:" + self.cor.end() + '\n' + dados) # print dados recebidos
                 print("\nComo esses peers não podem mais trocar dados, devido ao formato, essa thread e conexão serão encerrados")
-                self.encerrarConexao_p2p(endereco, peerSock) # encerra conexão p2p
-                return                                       # encerra a thread
+                self.encerrarConexao_p2p(endereco, peerSock)         # encerra conexão p2p
+                # faltou tirar a thread da lista de threads
+                return                                               # encerra a thread
 
-    # Método que faz as conexões P2P de forma ativa # 
+    # Método único para fazer conexões P2P e enviar mensagem # 
     # // Entrada: Comando digitado na interface
-    def conectar_p2p(self, comando): 
-        if not Usuario.Logado: # Se o usuario não estiver online
+    def conectar_p2p(self, comando):
+        # Verifica se o usuário não está online
+        if not Usuario.Logado:                                       
             print("Fazendo login sob esse username: " + self.cor.tazul() + '@' + self.username + self.cor.end() + " primeiro...")
-            self.requisitarLogin() # força ele logar
+            self.requisitarLogin()                                   # força ele logar
             if not Usuario.Logado:  
                 print(self.cor.tvermelho() + self.cor.tnegrito() + "Erro no login enquanto tentava-se conectar com outro peer" + self.cor.end())
                 print(self.cor.tazul() + "Escolha outro username" + self.cor.end())
-                return -1 # retorna pro menu
+                return -1                                            # retorna pro menu
             
-        # Captura o peername (username de quem deseja-se conectar) e a mensagem
+        # Captura o peername (username de quem deseja-se conectar) e a mensagem da linha de comando (interface)
         try:
-            username = comando.split(':')[0][1:] 
-            mensagem = comando[len(username) + 2:]
+            username = comando.split(':')[0][1:]  # coloca numa lista o username e a mensagem. 0-ésimo da lista é o username, [1:] = tira o @
+            mensagem = comando[len(username) + 2:] # todo o resto da string - @username + '' é a mensagem, onde '' é o caracter vazio
         except IndexError:
             print(self.cor.tnegrito() + self.cor.tvermelho() + "Informe o <Peername> concatenado com" + self.cor.end() + self.tnegrito()+
                   self.cor.tazul() + ' : ' + self.cor.end() + "<Msg>")
             return -1
         
-        if username == self.username:   # Se o usuario em que deseja-se conectar for si mesmo
+        # Verifica se a conexão que deseja-se estabelecer é a conexão consigo mesmo
+        if username == self.username:                               
             print(self.cor.tnegrito() + self.cor.tvermelho() + "Não é possível se comunicar com si mesmo" + self.cor.end())
-            return -1                   # insucesso na conexão
+            return -1                                               # insucesso na conexão
         
-        findUserON = self.usuariosOnline.get(username)  # Verifica se tal username está online
-        if not findUserON: # Se não, então não estabelece conexão
+        # Verifica se o peer no qual deseja-se conectar e mandar mensagem está online no Servidor Central
+        findUserON = self.usuariosOnline.get(username)              
+        if not findUserON:                                          # Se não, então não estabelece conexão
             print(self.cor.tnegrito() + self.cor.tvermelho() + "Usuário: " + self.cor.tazul() + '@' + username + self.cor.end() + 
                       self.cor.tvermelho() + " não online. Requisite a lista de usuários, para atualizá-la" + self.cor.end())
             return -1
@@ -405,11 +439,11 @@ class Usuario:
             portaPeer = int(findUserON["Porta"])
             
             findPeer = Usuario.peersConectados.get(enderecoPeer)    # Verifica se já existe conexão estabelecida
-            if not findPeer: # Se não, então registre ela em peerConectados
+            if not findPeer:                                        # Se não, então registre ela em peerConectados
                 sockAtivo_p2p = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
                 sockAtivo_p2p.connect((enderecoPeer, portaPeer))
             
-                nAleatorioToCor = random.randint(0,7) # seleciona um nº aleatorio para decidir uma cor para cada usuario conectado
+                nAleatorioToCor = random.randint(0,7)                # seleciona um nº aleatorio para decidir uma cor para cada usuario conectado
                 corUser = self.cor.selecionaCor(nAleatorioToCor)
                 Usuario.peersConectados[enderecoPeer] = {
                     "username": username,
@@ -424,8 +458,9 @@ class Usuario:
                 peerThread.start()
         
         except: # Caso algum erro tenha ocorrido
+            infoUser = json.dumps(findUserON)
             print(self.cor.tvermelho() + self.cor.tsublinhado() + "Não foi possível estabelecer uma conexão ativa com: " + self.cor.end() + username)
-            print(self.cor.tazul() + self.cor.tsublinhado() + "Informações recebidas desse usuário: " + self.cor.end() + '\n' + username)
+            print(self.cor.tazul() + self.cor.tsublinhado() + "Informações recebidas desse usuário: " + self.cor.end() + '\n' + infoUser)
             return -1 # volta ao menu
         
         # Envia a mensagem para esse username
@@ -472,13 +507,9 @@ class Usuario:
             sockPeer = Usuario.peersConectados[peer].get("socket")
             sockPeer.close()
             
-        self.sockPassivo_p2p.close()   # Encerra o modo de escuta para evitar de receber novas conexões de peers        
-            
-        if Usuario.Logado == True:  
-            self.requisitarLogoff()
-            if Usuario.Logado:  # Se o usuário contina logado, deu erro no logoff, mas como a aplicação está encerrado
-                pass            # pass tal erro = não faça nada
-            
+        # Encerra o modo de escuta para evitar de receber novas conexões de peers
+        self.sockPassivo_p2p.close()           
+                        
         return
             
 # ToDo - Tratar erro, caso o HOSTSC,PORTASC sejam invalidos. Bloquear o usuário final de avançar
